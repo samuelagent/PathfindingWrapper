@@ -47,6 +47,7 @@ FUNCTION > [Object] module.New(Character: Model, [Optional] PathComputeParams | 
 
 --// Services
 local PathfindingService = game:GetService("PathfindingService")
+local Players = game:GetService("Players")
 
 --// Constants
 local DistanceToRecomputePath = 15
@@ -88,6 +89,7 @@ local module = {}
 module.__index = module
 
 module.PathComputeParams = {
+	["DynamicTargetting"] = false, -- Retargetting to nearest player
 	["CheckDirectMove"] = true,
 	["CheckForDrops"] = true,
 	["CheckDistance"] = true,
@@ -135,7 +137,7 @@ function module:GetRelations()
 	local Slope = VectorRaw.Y / VectorFlat.Magnitude -- Rise / Run
 	return {
 		["InChaseDistance"] = GetDistanceSquared(self:GetTargetPosition(), RootPosition) < DistanceToChaseDirectlySquared,
-		["LineOfSight"] = (LineOfSightResult and false) or true,
+		["LineOfSight"] = if LineOfSightResult then false else true,
 		["DropCheck"] = DropCheckResult and true or false,
 		["RelationVectorSlope"] = Slope
 	}
@@ -184,8 +186,7 @@ function module:TargetChanged(NewValue)
 			Character = NewValue:FindFirstAncestorWhichIsA("Model")
 			if Character == workspace then Character = nil end
 		end
-		
-		self.RaycastParams.FilterDescendantsInstances = {workspace.Actors, Character}
+		self.RaycastParams.FilterDescendantsInstances = {workspace.Actors, Character, self.Character}
 		self.PathComputeParams["CheckDirectMove"] = self.DefaultPathComputeParams["CheckDirectMove"]
 	else
 		self.Humanoid:MoveTo(self.HumanoidRootPart.Position)	
@@ -253,6 +254,22 @@ function module:LifeCycle()
 	if self.LifeThread then return end
 	self.LifeThread = task.spawn(function()
 		while true do
+			if self.PathComputeParams["DynamicTargetting"] then
+				local Target = nil
+				local NearestDistance = math.huge
+				for _, Player in pairs(Players:GetPlayers()) do
+					if Player.Character and not Player.Character:GetAttribute("NonTarget") and Player.Character.PrimaryPart then
+						local Distance = GetDistanceSquared(Player.Character.PrimaryPart.Position, Player.Character.PrimaryPart.Position)
+						if Distance < NearestDistance then
+							NearestDistance = Distance
+							Target = Player.Character
+						end
+					end
+				end
+				if Target and Target ~= self.Target then
+					self.Target = Target
+				end
+			end
 			if self.Target and self.Enabled then
 				local DistanceFromTarget = (self:GetTargetPosition() - self.HumanoidRootPart.Position).Magnitude
 				self.TickRate = GetTickRate(DistanceFromTarget)
@@ -290,6 +307,7 @@ function module:LifeCycle()
 						self:ComputePath()
 					end
 				end
+
 			end
 
 			task.wait(self.TickRate)
@@ -298,10 +316,17 @@ function module:LifeCycle()
 end
 
 function module.New(Character, PathComputeParams)
+	for _, BasePart in pairs(Character:GetDescendants()) do
+		if BasePart:IsA("BasePart") then
+			BasePart:SetNetworkOwnershipAuto(false)
+			BasePart:SetNetworkOwner(nil)
+		end
+	end
 	Character.Parent = workspace.Actors
 	local NewActor = {}
 	NewActor.HumanoidRootPart = Character:FindFirstChild("HumanoidRootPart") or error(Character .. " does not have a humanoidrootpart")
 	NewActor.Humanoid = Character:FindFirstChildWhichIsA("Humanoid") or error(Character .. " does not have a humanoid")
+	NewActor.Character = Character
 
 	NewActor.Waypoints = {}
 	NewActor.Connections = {}
@@ -321,6 +346,7 @@ function module.New(Character, PathComputeParams)
 
 	NewActor.RaycastParams = RaycastParams.new()
 	NewActor.RaycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+	NewActor.RaycastParams.FilterDescendantsInstances = {workspace.Actors, Character, NewActor.Character}
 
 	NewActor.Enabled = true
 
@@ -334,8 +360,9 @@ function module.New(Character, PathComputeParams)
 	NewActor.__index = NewActor
 	
 	NewActor.__newindex = function(Table, Index, Value)
-		if module[Index .. "Changed"] then module[Index .. "Changed"](NewActor) end
+		local ChangedFunction = NewActor[Index .. "Changed"]
 		rawset(NewActor, Index, Value)
+		if ChangedFunction then ChangedFunction(NewActor, Value) end
 	end
 	
 	local ProxyTable = {}
