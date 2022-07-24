@@ -129,11 +129,11 @@ function module:GetRelations()
 	local VectorRaw = self:GetTargetPosition() - self.HumanoidRootPart.Position
 	local RootPosition = self.HumanoidRootPart.Position
 	local VectorFlat = VectorRaw * FlatVector
-	
+
 	local DropCheckOrigin = RootPosition + VectorFlat.Unit * DownOffset
 	local LineOfSightResult = workspace:Raycast(RootPosition, VectorRaw, self.RaycastParams)
 	local DropCheckResult = workspace:Raycast(DropCheckOrigin, DownVector, self.RaycastParams)
-	
+
 	local Slope = VectorRaw.Y / VectorFlat.Magnitude -- Rise / Run
 	return {
 		["InChaseDistance"] = GetDistanceSquared(self:GetTargetPosition(), RootPosition) < DistanceToChaseDirectlySquared,
@@ -166,7 +166,7 @@ function module:CanMoveDirectly(Relations)
 	return (
 		(Relations["RelationVectorSlope"] < SlopeToChaseDirectly or not self.PathComputeParams["CheckSlope"]) and (Relations["InChaseDistance"] or
 			not self.PathComputeParams["CheckDistance"]) and (Relations["DropCheck"] or not self.PathComputeParams["CheckForDrops"]) and
-				(Relations["LineOfSight"] or not self.PathComputeParams["CheckLOF"])
+			(Relations["LineOfSight"] or not self.PathComputeParams["CheckLOF"])
 	)
 end
 
@@ -174,8 +174,8 @@ end
 
 function module:EnabledChanged(NewValue)
 	if not NewValue then
-		self.Humanoid:MoveTo(self.HumanoidRootPart.Position)	
-		self:DisconnectPath()	
+		self:DisconnectPath()
+		self.Humanoid:MoveTo(self.HumanoidRootPart.Position)
 	end
 end
 
@@ -189,8 +189,8 @@ function module:TargetChanged(NewValue)
 		self.RaycastParams.FilterDescendantsInstances = {workspace.Actors, Character, self.Character}
 		self.PathComputeParams["CheckDirectMove"] = self.DefaultPathComputeParams["CheckDirectMove"]
 	else
-		self.Humanoid:MoveTo(self.HumanoidRootPart.Position)	
-		self:DisconnectPath()	
+		self:DisconnectPath()
+		self.Humanoid:MoveTo(self.HumanoidRootPart.Position)
 	end
 end
 
@@ -199,10 +199,10 @@ end
 function module:Destroy()
 	self.Enabled = false
 	self.Target = false
-	
+
 	self:DisconnectPath()
 	task.cancel(self.LifeThread)
-	
+
 	setmetatable(self, nil)
 	table.clear(self)
 end
@@ -212,7 +212,7 @@ function module:ComputePath()
 	local Success, Error = pcall(function()
 		self.Path:ComputeAsync((self.HumanoidRootPart.CFrame * self.OffsetPath).Position, self:GetTargetPosition())
 	end)
-	
+
 	if Success and self.Path.Status == Enum.PathStatus.Success then
 		self.BindableEvents["PathStatusChanged"]:Fire("Pathfinding")
 		local CurrentWaypoint = 2 -- The index of the current goal waypoint. Waypoints[#Waypoints] = Target Position | Waypoints[1] = Actor Start Position
@@ -220,14 +220,14 @@ function module:ComputePath()
 		self.BindableEvents["PathComputed"]:Fire(self.Path)
 		self.Waypoints = self.Path:GetWaypoints()
 		self:DisconnectPath()
-		
+
 		self.Connections.BlockedConnection = self.Path.Blocked:Connect(function(WaypointIndex)
 			if WaypointIndex >= CurrentWaypoint then self:ComputePath() end
 		end)
-		
+
 		self.Connections.ReachedConnection = self.Humanoid.MoveToFinished:Connect(function(PointReached)
 			if not PointReached then return end
-			
+
 			local ElevationDifference = (self.Waypoints[CurrentWaypoint] and self.Waypoints[CurrentWaypoint].Position.Y - self.HumanoidRootPart.Position.Y) or 0
 
 			if self:CheckIfFallen(ElevationDifference, CurrentWaypoint) then -- We probably accidentally fell
@@ -244,7 +244,7 @@ function module:ComputePath()
 				self:DisconnectPath()
 			end
 		end)
-		
+
 		self.Humanoid:MoveTo(self.Waypoints[CurrentWaypoint] and self.Waypoints[CurrentWaypoint].Position or self.HumanoidRootPart.Position)
 		self:HandleJump(self.Waypoints[CurrentWaypoint])
 	end
@@ -278,6 +278,7 @@ function module:LifeCycle()
 				local Relations = self:GetRelations()
 
 				if Relations and self:CanMoveDirectly(Relations) then
+					self:DisconnectPath()
 					self.BindableEvents["PathStatusChanged"]:Fire("Following")
 					repeat
 						self.Humanoid:MoveTo(self:GetTargetPosition(), self:GetTargetPart())
@@ -330,17 +331,17 @@ function module.New(Character, PathComputeParams)
 
 	NewActor.Waypoints = {}
 	NewActor.Connections = {}
-	
+
 	NewActor.BindableEvents = {
 		["PathStatusChanged"] = Instance.new("BindableEvent"),
 		["WaypointReached"] = Instance.new("BindableEvent"),
 		["PathComputed"] = Instance.new("BindableEvent"),
 	}
-	
+
 	NewActor.PathStatusChanged = NewActor.BindableEvents["PathStatusChanged"].Event
 	NewActor.WaypointReached = NewActor.BindableEvents["WaypointReached"].Event
 	NewActor.PathComputed = NewActor.BindableEvents["PathComputed"].Event
-	
+
 	NewActor.DefaultPathComputeParams = PathComputeParams or module.PathComputeParams
 	NewActor.PathComputeParams = ShallowCopy(NewActor.DefaultPathComputeParams)
 
@@ -353,22 +354,22 @@ function module.New(Character, PathComputeParams)
 	NewActor.LastVelocity = Vector3.zero
 	NewActor.OffsetPath = CFrame.new(0, 0, 1)
 	NewActor.TickRate = 1
-	
+
 	NewActor.LifeThread = nil
 	NewActor.Target = false
-	
+
 	NewActor.__index = NewActor
-	
+
 	NewActor.__newindex = function(Table, Index, Value)
 		local ChangedFunction = NewActor[Index .. "Changed"]
 		rawset(NewActor, Index, Value)
 		if ChangedFunction then ChangedFunction(NewActor, Value) end
 	end
-	
+
 	local ProxyTable = {}
 	setmetatable(ProxyTable, NewActor)
 	setmetatable(NewActor, module)
-	
+
 	return ProxyTable -- We can just use getmetatable to get NewActor for things such as iteration
 end
 
