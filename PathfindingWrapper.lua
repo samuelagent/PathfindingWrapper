@@ -259,7 +259,7 @@ function module:LifeCycle()
 				local NearestDistance = math.huge
 				for _, Player in pairs(Players:GetPlayers()) do
 					if Player.Character and not Player.Character:GetAttribute("NonTarget") and Player.Character.PrimaryPart then
-						local Distance = GetDistanceSquared(Player.Character.PrimaryPart.Position, Player.Character.PrimaryPart.Position)
+						local Distance = GetDistanceSquared(self.HumanoidRootPart.Position, Player.Character.PrimaryPart.Position)
 						if Distance < NearestDistance then
 							NearestDistance = Distance
 							Target = Player.Character
